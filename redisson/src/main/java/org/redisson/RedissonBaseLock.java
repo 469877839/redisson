@@ -70,7 +70,23 @@ public abstract class RedissonBaseLock extends RedissonExpirable implements RLoc
     }
 
     protected void scheduleExpirationRenewal(long threadId) {
-        renewalScheduler.renewLock(getRawName(), threadId, getLockName(threadId));
+        renewalScheduler.renewLock(getRawName(), threadId, getLockName(threadId), this::releaseOnMaxHoldTimeExceeded);
+    }
+
+    private void releaseOnMaxHoldTimeExceeded(long threadId) {
+        CompletionStage<Boolean> future = unlockInnerAsync(threadId, null);
+        future.whenComplete((res, e) -> {
+            if (e != null) {
+                log.error("Can't release lock '{}' after max hold time exceeded, thread-id: {}",
+                        getRawName(), threadId, e);
+                return;
+            }
+            if (Boolean.FALSE.equals(res)) {
+                // lock is still held reentrantly by the same thread,
+                // release the remaining holds
+                releaseOnMaxHoldTimeExceeded(threadId);
+            }
+        });
     }
 
     protected void cancelExpirationRenewal(Long threadId, Boolean unlockResult) {

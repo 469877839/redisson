@@ -197,6 +197,12 @@ Default value: `100`
 
 Amount of locks used by a single lock watchdog execution. This parameter is only used if lock has been acquired without leaseTimeout parameter definition. 
 
+**lockMaxHoldTime**
+
+Default value: `0` (unlimited)
+
+Maximum amount of time in milliseconds a lock may be held since its acquisition. This parameter is only used if an RLock object is acquired without the `leaseTimeout` parameter. Once this period elapses, the lock watchdog stops renewing the lock expiration and releases the lock through the standard unlock path, so the holder check and the reentrancy counter are respected. The budget starts at the first acquisition and isn't extended by reentrant acquisitions of the same thread. The check is performed against the local clock at each watchdog run, thus the effective precision is `lockWatchdogTimeout / 3`.
+
 **checkLockSyncedSlaves**
 
 Default value: `true`

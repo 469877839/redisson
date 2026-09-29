@@ -154,4 +154,57 @@ public class RedissonLockExpirationRenewalTest extends RedisDockerTest {
         }
     }
 
+    @Test
+    public void testLockMaxHoldTime() throws InterruptedException {
+        Config c = createConfig(redis);
+        c.setLockWatchdogTimeout(LOCK_WATCHDOG_TIMEOUT);
+        c.setLockMaxHoldTime(2_000);
+        RedissonClient client = Redisson.create(c);
+        try {
+            RLock lock = client.getLock("maxHoldLock");
+            lock.lock();
+
+            // renewal stops once the 2s budget is exhausted
+            // and the lock is released through the standard unlock path
+            Thread.sleep(4_000);
+
+            assertThat(lock.isLocked()).isFalse();
+            assertThatThrownBy(lock::unlock).isInstanceOf(IllegalMonitorStateException.class);
+
+            RLock lock2 = client.getLock("maxHoldLock");
+            assertThat(lock2.tryLock()).isTrue();
+            lock2.unlock();
+        } finally {
+            client.shutdown();
+        }
+    }
+
+    @Test
+    public void testLockMaxHoldTimeReentrant() throws InterruptedException {
+        Config c = createConfig(redis);
+        c.setLockWatchdogTimeout(LOCK_WATCHDOG_TIMEOUT);
+        c.setLockMaxHoldTime(2_000);
+        RedissonClient client = Redisson.create(c);
+        try {
+            RLock lock = client.getLock("maxHoldReentrantLock");
+            lock.lock();
+
+            Thread.sleep(1_500);
+            // reentrant acquisition doesn't move the budget start
+            lock.lock();
+            assertThat(lock.getHoldCount()).isEqualTo(2);
+
+            Thread.sleep(2_000);
+
+            // past the original 2s budget, the lock is fully released despite reentrancy
+            assertThat(lock.isLocked()).isFalse();
+
+            RLock lock2 = client.getLock("maxHoldReentrantLock");
+            assertThat(lock2.tryLock()).isTrue();
+            lock2.unlock();
+        } finally {
+            client.shutdown();
+        }
+    }
+
 }

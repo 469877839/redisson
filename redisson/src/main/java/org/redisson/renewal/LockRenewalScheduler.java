@@ -19,6 +19,7 @@ import org.redisson.command.CommandAsyncExecutor;
 
 import java.util.Collection;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongConsumer;
 
 /**
  *
@@ -53,10 +54,10 @@ public final class LockRenewalScheduler {
         task.add(name, lockName, threadId, fields);
     }
 
-    public void renewLock(String name, Long threadId, String lockName) {
+    public void renewLock(String name, Long threadId, String lockName, LongConsumer expirationListener) {
         reference.compareAndSet(null, new LockTask(internalLockLeaseTime, executor, batchSize));
         LockTask task = reference.get();
-        task.add(name, lockName, threadId);
+        task.add(name, lockName, threadId, expirationListener);
     }
 
     public void cancelReadLockRenewal(String name, Long threadId) {

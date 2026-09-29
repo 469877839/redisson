@@ -20,6 +20,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.LongConsumer;
 
 /**
  *
@@ -31,9 +32,18 @@ public class LockEntry {
     final Queue<Long> threadsQueue = new ConcurrentLinkedQueue<>();
     final Map<Long, Integer> threadId2counter = new ConcurrentHashMap<>();
     final Map<Long, String> threadId2lockName = new ConcurrentHashMap<>();
+    final Map<Long, Long> threadId2deadline = new ConcurrentHashMap<>();
+
+    private final long maxHoldTime;
+    private final LongConsumer expirationListener;
 
     LockEntry() {
-        super();
+        this(0, null);
+    }
+
+    LockEntry(long maxHoldTime, LongConsumer expirationListener) {
+        this.maxHoldTime = maxHoldTime;
+        this.expirationListener = expirationListener;
     }
 
     public String getLockName(long threadId) {
@@ -42,12 +52,25 @@ public class LockEntry {
 
     public void addThreadId(long threadId, String lockName) {
         threadId2counter.compute(threadId, (t, counter) -> {
+            if (counter == null && maxHoldTime > 0) {
+                // budget starts at the first acquisition,
+                // reentrant acquisitions don't move it
+                threadId2deadline.put(threadId, System.currentTimeMillis() + maxHoldTime);
+            }
             counter = Optional.ofNullable(counter).orElse(0);
             counter++;
             threadsQueue.add(threadId);
             return counter;
         });
         threadId2lockName.putIfAbsent(threadId, lockName);
+    }
+
+    public Long getDeadline(long threadId) {
+        return threadId2deadline.get(threadId);
+    }
+
+    public LongConsumer getExpirationListener() {
+        return expirationListener;
     }
 
     public boolean hasNoThreads() {
@@ -64,10 +87,18 @@ public class LockEntry {
             if (counter == 0) {
                 threadsQueue.removeIf(v-> v == threadId);
                 threadId2lockName.remove(threadId);
+                threadId2deadline.remove(threadId);
                 return null;
             }
             return counter;
         });
+    }
+
+    public void removeThread(long threadId) {
+        threadId2counter.remove(threadId);
+        threadsQueue.removeIf(v -> v == threadId);
+        threadId2lockName.remove(threadId);
+        threadId2deadline.remove(threadId);
     }
 
 }

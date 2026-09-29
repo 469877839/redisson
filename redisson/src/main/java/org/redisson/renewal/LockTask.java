@@ -24,6 +24,7 @@ import org.redisson.misc.AsyncChunkProcessor.ChunkExecution;
 
 import java.util.*;
 import java.util.concurrent.CompletionStage;
+import java.util.function.LongConsumer;
 
 /**
  *
@@ -48,8 +49,10 @@ public class LockTask extends RenewalTask {
         args.add(internalLockLeaseTime);
 
         List<String> keys = new ArrayList<>(chunkSize);
+        List<Map.Entry<String, Long>> expired = new ArrayList<>();
 
         // Build chunk, skipping invalid entries
+        long now = System.currentTimeMillis();
         while (iter.hasNext() && keys.size() < chunkSize) {
             String key = iter.next();
 
@@ -67,9 +70,19 @@ public class LockTask extends RenewalTask {
                 continue;
             }
 
+            Long deadline = entry.getDeadline(threadId);
+            if (deadline != null && now >= deadline) {
+                expired.add(new AbstractMap.SimpleImmutableEntry<>(key, threadId));
+                continue;
+            }
+
             keys.add(key);
             args.add(lockName);
             name2threadId.put(key, threadId);
+        }
+
+        for (Map.Entry<String, Long> e : expired) {
+            expire(e.getKey(), e.getValue());
         }
 
         // No valid entries found - signal completion
@@ -102,8 +115,19 @@ public class LockTask extends RenewalTask {
         });
     }
 
-    public void add(String rawName, String lockName, long threadId) {
-        LockEntry entry = new LockEntry();
+    private void expire(String name, long threadId) {
+        LockEntry entry = name2entry.get(name);
+        // the whole budget of this thread is exhausted,
+        // deregister it completely so a re-lock starts with a fresh budget
+        cancelExpirationRenewalFully(name, threadId);
+        if (entry != null && entry.getExpirationListener() != null) {
+            entry.getExpirationListener().accept(threadId);
+        }
+    }
+
+    public void add(String rawName, String lockName, long threadId, LongConsumer expirationListener) {
+        long maxHoldTime = executor.getServiceManager().getCfg().getLockMaxHoldTime();
+        LockEntry entry = new LockEntry(maxHoldTime, expirationListener);
         entry.addThreadId(threadId, lockName);
 
         add(rawName, lockName, threadId, entry);

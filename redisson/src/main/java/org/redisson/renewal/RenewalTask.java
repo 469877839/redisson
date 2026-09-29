@@ -95,13 +95,25 @@ abstract class RenewalTask implements TimerTask {
     abstract CompletionStage<Void> renew(Iterator<String> iter, int chunkSize);
 
     void cancelExpirationRenewal(String name, Long threadId) {
+        cancelExpirationRenewal(name, threadId, false);
+    }
+
+    void cancelExpirationRenewalFully(String name, long threadId) {
+        cancelExpirationRenewal(name, threadId, true);
+    }
+
+    private void cancelExpirationRenewal(String name, Long threadId, boolean removeAllHolds) {
         LockEntry newTask = name2entry.compute(name, (unused, task) -> {
             if (task == null) {
                 return null;
             }
 
             if (threadId != null) {
-                task.removeThreadId(threadId);
+                if (removeAllHolds) {
+                    task.removeThread(threadId);
+                } else {
+                    task.removeThreadId(threadId);
+                }
             }
 
             if (threadId == null || task.hasNoThreads()) {

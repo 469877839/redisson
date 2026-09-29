@@ -83,6 +83,8 @@ public class Config {
 
     private int lockWatchdogBatchSize = 100;
 
+    private long lockMaxHoldTime = 0;
+
     private long fairLockWaitTimeout = 5 * 60000;
 
     private boolean checkLockSyncedSlaves = true;
@@ -179,6 +181,7 @@ public class Config {
         setKeepPubSubOrder(oldConf.isKeepPubSubOrder());
         setLockWatchdogTimeout(oldConf.getLockWatchdogTimeout());
         setLockWatchdogBatchSize(oldConf.getLockWatchdogBatchSize());
+        setLockMaxHoldTime(oldConf.getLockMaxHoldTime());
         setFairLockWaitTimeout(oldConf.getFairLockWaitTimeout());
         setCheckLockSyncedSlaves(oldConf.isCheckLockSyncedSlaves());
         setSlavesSyncTimeout(oldConf.getSlavesSyncTimeout());
@@ -667,6 +670,31 @@ public class Config {
 
     public long getLockWatchdogTimeout() {
         return lockWatchdogTimeout;
+    }
+
+    /**
+     * This parameter is only used if lock has been acquired without leaseTime parameter definition.
+     * Defines the maximum amount of time a lock may be held since it was acquired.
+     * Lock expiration renewal stops once this period elapses and the lock is
+     * released through the standard unlock path, so the holder check and
+     * the reentrancy counter are respected.
+     * <p>
+     * The check is performed against the local clock at each lock watchdog
+     * renewal run, thus the effective precision is
+     * <code>lockWatchdogTimeout / 3</code>.
+     * <p>
+     * Default is 0 (unlimited hold time)
+     *
+     * @param lockMaxHoldTime maximum hold time in milliseconds, 0 means unlimited
+     * @return config
+     */
+    public Config setLockMaxHoldTime(long lockMaxHoldTime) {
+        this.lockMaxHoldTime = lockMaxHoldTime;
+        return this;
+    }
+
+    public long getLockMaxHoldTime() {
+        return lockMaxHoldTime;
     }
 
 
